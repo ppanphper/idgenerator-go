@@ -20,7 +20,10 @@ var _loopCount int32 = 0  // 循环数量
 var _lifeIndex int32 = -1 // WorkerId本地生命时序（本地多次注册时，生命时序会不同）
 var _token int32 = -1     // WorkerId远程注册时用的token，将存储在 IdGen:WorkerId:Value:xx 的值中（本功能暂未启用）
 
-var _WorkerIdLifeTimeSeconds int32 = 15    // IdGen:WorkerId:Value:xx 的值在 redis 中的有效期（单位秒，最好是3的整数倍）
+var (
+	_WorkerIdLifeTimeSeconds    int32 = 15 // IdGen:WorkerId:Value:xx 的值在 redis 中的有效期（单位秒，最好是3的整数倍）
+	_WorkerIdLifeTimeMinSeconds int32 = 3  // 最小秒数
+)
 var _MaxLoopCount int32 = 20               // 最大循环次数（无可用WorkerId时循环查找）
 var _SleepMillisecondEveryLoop int32 = 200 // 每次循环后，暂停时间
 var _MaxWorkerId int32 = 0                 // 最大WorkerId值，超过此值从_MinWorkerId开始
@@ -118,7 +121,9 @@ func RegisterMany(conf RegisterConf) []int32 {
 	_RedisPassword = conf.Password
 	_RedisDB = conf.DB
 	_RedisMasterName = conf.MasterName
-	_WorkerIdLifeTimeSeconds = conf.LifeTimeSeconds
+	if conf.LifeTimeSeconds >= _WorkerIdLifeTimeMinSeconds {
+		_WorkerIdLifeTimeSeconds = conf.LifeTimeSeconds
+	}
 
 	_client = newRedisClient()
 	if _client == nil {
@@ -177,7 +182,9 @@ func RegisterOne(conf RegisterConf) int32 {
 	_RedisPassword = conf.Password
 	_RedisDB = conf.DB
 	_RedisMasterName = conf.MasterName
-	_WorkerIdLifeTimeSeconds = conf.LifeTimeSeconds
+	if conf.LifeTimeSeconds >= _WorkerIdLifeTimeMinSeconds {
+		_WorkerIdLifeTimeSeconds = conf.LifeTimeSeconds
+	}
 	_loopCount = 0
 
 	_client = newRedisClient()
@@ -318,7 +325,7 @@ func extendLifeTime(lifeIndex int32) {
 
 	// 循环操作：间隔一定时间，刷新 WorkerId 在 redis 中的有效时间。
 	for {
-		time.Sleep(time.Duration(_WorkerIdLifeTimeSeconds/3) * time.Second)
+		time.Sleep(time.Duration(_WorkerIdLifeTimeSeconds/_WorkerIdLifeTimeMinSeconds) * time.Second)
 
 		// 上锁操作，防止跟 UnRegister 操作重叠
 		_workerIdLock.Lock()
@@ -351,7 +358,7 @@ func extendWorkerIdLifeTime(lifeIndex int32, workerId int32) {
 
 	// 循环操作：间隔一定时间，刷新 WorkerId 在 redis 中的有效时间。
 	for {
-		time.Sleep(time.Duration(_WorkerIdLifeTimeSeconds/3) * time.Second)
+		time.Sleep(time.Duration(_WorkerIdLifeTimeSeconds/_WorkerIdLifeTimeMinSeconds) * time.Second)
 
 		// 上锁操作，防止跟 UnRegister 操作重叠
 		_workerIdLock.Lock()
